@@ -1,0 +1,40 @@
+# Node modules (will be installed in container)
+node_modules
+npm-debug.log
+
+# Build output (will be built in container)
+dist
+
+# Environment files (use docker-compose env vars)
+.env
+.env.local
+.env.*.local
+
+# Git
+.git
+.gitignore
+
+# Documentation (not needed in container)
+*.md
+!README.md
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+*.test.ts
+*.spec.ts
+coverage
+
+# Temporary files
+tmp
+temp
+*.tmp

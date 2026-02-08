@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ethereum Transactions Crawler</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔍 Ethereum Transactions Crawler</h1>
+            <p>View all transactions for any Ethereum wallet address</p>
+        </header>
+
+        <div class="search-form">
+            <div class="form-group">
+                <label for="walletAddress">Wallet Address</label>
+                <input
+                    type="text"
+                    id="walletAddress"
+                    placeholder="0xaa7a9ca87d3694b5755f213b5d04094b8d0f0a6f"
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="startBlock">Start Block</label>
+                <input
+                    type="number"
+                    id="startBlock"
+                    placeholder="9000000"
+                >
+            </div>
+
+            <button id="searchBtn">
+                Search Transactions
+            </button>
+        </div>
+
+        <div class="search-form" style="margin-top: 30px; border-top: 2px solid #e0e0e0; padding-top: 30px;">
+            <h3 style="margin-bottom: 20px;">💰 Balance at Date (Bonus Feature)</h3>
+            <div class="form-group">
+                <label for="balanceWalletAddress">Wallet Address</label>
+                <input
+                    type="text"
+                    id="balanceWalletAddress"
+                    placeholder="0xaa7a9ca87d3694b5755f213b5d04094b8d0f0a6f"
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="targetDate">Date (YYYY-MM-DD)</label>
+                <input
+                    type="date"
+                    id="targetDate"
+                    placeholder="2020-01-01"
+                >
+            </div>
+
+            <button id="balanceBtn">
+                Calculate Balance
+            </button>
+        </div>
+
+        <div id="loading" class="loading hidden">
+            <div class="spinner"></div>
+            <p>Fetching transactions...</p>
+        </div>
+
+        <div id="balanceLoading" class="loading hidden">
+            <div class="spinner"></div>
+            <p>Calculating balance... This may take a while for addresses with many transactions.</p>
+        </div>
+
+        <div id="error" class="error hidden"></div>
+
+        <div id="balanceResult" class="balance-result hidden">
+            <div class="balance-card">
+                <h3>Balance Result</h3>
+                <div id="balanceInfo"></div>
+            </div>
+        </div>
+
+        <div id="results" class="results hidden">
+            <div class="results-header">
+                <h2>ETH Transactions</h2>
+                <div id="resultsInfo" class="results-info"></div>
+            </div>
+
+            <div class="table-container">
+                <table id="transactionsTable">
+                    <thead>
+                        <tr>
+                            <th>Block</th>
+                            <th>Transaction Hash</th>
+                            <th>From</th>
+                            <th>To</th>
+                            <th>ETH Amount</th>
+                            <th>Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transactionsBody">
+                    </tbody>
+                </table>
+            </div>
+            <div id="txPagination" class="pagination hidden">
+                <button id="txPrev">Prev</button>
+                <span id="txPageInfo"></span>
+                <button id="txNext">Next</button>
+            </div>
+        </div>
+
+        <div id="tokenResults" class="results hidden">
+            <div class="results-header">
+                <h2>ERC-20 Token Transfers</h2>
+                <div id="tokenResultsInfo" class="results-info"></div>
+            </div>
+
+            <div class="table-container">
+                <table id="tokenTransfersTable">
+                    <thead>
+                        <tr>
+                            <th>Block</th>
+                            <th>Transaction Hash</th>
+                            <th>From</th>
+                            <th>To</th>
+                            <th>Amount</th>
+                            <th>Token</th>
+                            <th>Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tokenTransfersBody">
+                    </tbody>
+                </table>
+            </div>
+            <div id="tokenPagination" class="pagination hidden">
+                <button id="tokenPrev">Prev</button>
+                <span id="tokenPageInfo"></span>
+                <button id="tokenNext">Next</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
