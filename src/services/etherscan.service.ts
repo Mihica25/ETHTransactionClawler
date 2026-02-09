@@ -4,13 +4,27 @@ import type { DatabaseService } from './database.service.js';
 export class EtherscanService {
   private apiKey: string;
   private baseUrl: string = 'https://api.etherscan.io/v2/api';
+  private chainId: string;
+  private rpcUrl: string;
   private db: DatabaseService;
 
-  private static readonly FETCH_TIMEOUT_MS = 15000;
+  private static readonly FETCH_TIMEOUT_MS = Number(process.env.FETCH_TIMEOUT_MS) || 15000;
+  private static readonly BLOCK_CHUNK_SIZE = 100000;
 
   constructor(apiKey: string, db: DatabaseService) {
     this.apiKey = apiKey;
+    this.chainId = process.env.CHAIN_ID || '1';
+    this.rpcUrl = process.env.RPC_URL || '';
     this.db = db;
+  }
+
+  private buildUrl(params: Record<string, string>): string {
+    const searchParams = new URLSearchParams({
+      chainid: this.chainId,
+      ...params,
+      apikey: this.apiKey,
+    });
+    return `${this.baseUrl}?${searchParams}`;
   }
 
   private async fetchWithTimeout(url: string, timeoutMs: number = EtherscanService.FETCH_TIMEOUT_MS): Promise<Response> {
@@ -24,7 +38,7 @@ export class EtherscanService {
   }
 
   private async getLatestBlockNumber(): Promise<number> {
-    const url = `${this.baseUrl}?chainid=1&module=proxy&action=eth_blockNumber&apikey=${this.apiKey}`;
+    const url = this.buildUrl({ module: 'proxy', action: 'eth_blockNumber' });
     const response = await this.fetchWithTimeout(url);
     const data = await response.json();
     return parseInt(data.result, 16);
@@ -35,7 +49,16 @@ export class EtherscanService {
     startBlock: number,
     endBlock: number
   ): Promise<EtherscanTransaction[]> {
-    const url = `${this.baseUrl}?chainid=1&module=account&action=txlist&address=${walletAddress}&startblock=${startBlock}&endblock=${endBlock}&page=1&offset=10000&sort=asc&apikey=${this.apiKey}`;
+    const url = this.buildUrl({
+      module: 'account',
+      action: 'txlist',
+      address: walletAddress,
+      startblock: startBlock.toString(),
+      endblock: endBlock.toString(),
+      page: '1',
+      offset: '10000',
+      sort: 'asc',
+    });
 
     const MAX_RETRIES = 3;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -68,34 +91,48 @@ export class EtherscanService {
   }
 
   async syncTransactions(walletAddress: string, startBlock: number): Promise<void> {
-    const lastSyncedBlock = await this.db.getLastSyncedBlock(walletAddress);
-    const actualStartBlock = Math.max(startBlock, lastSyncedBlock + 1);
-
+    const { firstSyncedBlock, lastSyncedBlock } = await this.db.getSyncStatus(walletAddress);
     const latestBlock = await this.getLatestBlockNumber();
 
-    if (actualStartBlock > latestBlock) {
-      return;
+    if (firstSyncedBlock > 0 && startBlock < firstSyncedBlock) {
+      await this.syncBlockRange(walletAddress, startBlock, firstSyncedBlock - 1, 'transactions');
     }
 
-    const BLOCK_CHUNK_SIZE = 100000;
-    let currentBlock = actualStartBlock;
+    const forwardStart = lastSyncedBlock > 0 ? lastSyncedBlock + 1 : startBlock;
+    if (forwardStart <= latestBlock) {
+      await this.syncBlockRange(walletAddress, forwardStart, latestBlock, 'transactions');
+    }
+  }
 
-    while (currentBlock <= latestBlock) {
-      const endBlock = Math.min(currentBlock + BLOCK_CHUNK_SIZE - 1, latestBlock);
+  private async syncBlockRange(
+    walletAddress: string,
+    fromBlock: number,
+    toBlock: number,
+    type: 'transactions' | 'tokens'
+  ): Promise<void> {
+    let currentBlock = fromBlock;
 
-      const transactions = await this.fetchTransactionRange(
-        walletAddress,
-        currentBlock,
-        endBlock
-      );
+    while (currentBlock <= toBlock) {
+      const endBlock = Math.min(currentBlock + EtherscanService.BLOCK_CHUNK_SIZE - 1, toBlock);
 
-      if (transactions.length > 0) {
-        await this.db.saveTransactions(transactions);
-        await this.db.updateSyncStatus(walletAddress, endBlock, transactions.length);
-      }
-
-      if (transactions.length === 10000) {
-        console.warn(`Hit 10k limit for block range ${currentBlock}-${endBlock}, some transactions may be missing`);
+      if (type === 'transactions') {
+        const transactions = await this.fetchTransactionRange(walletAddress, currentBlock, endBlock);
+        if (transactions.length > 0) {
+          await this.db.saveTransactions(transactions);
+        }
+        await this.db.updateSyncStatus(walletAddress, currentBlock, endBlock, transactions.length);
+        if (transactions.length === 10000) {
+          console.warn(`Hit 10k limit for block range ${currentBlock}-${endBlock}, some transactions may be missing`);
+        }
+      } else {
+        const transfers = await this.fetchTokenTransferRange(walletAddress, currentBlock, endBlock);
+        if (transfers.length > 0) {
+          await this.db.saveTokenTransfers(transfers);
+        }
+        await this.db.updateTokenSyncStatus(walletAddress, currentBlock, endBlock, transfers.length);
+        if (transfers.length === 10000) {
+          console.warn(`Hit 10k limit for token block range ${currentBlock}-${endBlock}, some transfers may be missing`);
+        }
       }
 
       currentBlock = endBlock + 1;
@@ -114,8 +151,11 @@ export class EtherscanService {
   }
 
   async getBalanceAtDate(walletAddress: string, date: string): Promise<string> {
-    const targetDate = new Date(date + 'T00:00:00.000Z');
+    if (!this.rpcUrl) {
+      throw new Error('RPC_URL is required for historical balance lookups');
+    }
 
+    const targetDate = new Date(date + 'T00:00:00.000Z');
     if (isNaN(targetDate.getTime())) {
       throw new Error('Invalid date format. Please use YYYY-MM-DD');
     }
@@ -125,10 +165,8 @@ export class EtherscanService {
       return snapshot.balance;
     }
 
-    await this.syncTransactions(walletAddress, 0);
-
-    const { received, sent } = await this.db.getBalanceSums(walletAddress, targetDate);
-    const balanceWei = received - sent;
+    const blockNumber = await this.getBlockNumberByTimestamp(targetDate);
+    const balanceWei = await this.getBalanceAtBlock(walletAddress, blockNumber);
     const balanceStr = this.weiToEthBigInt(balanceWei);
 
     await this.db.saveBalanceSnapshot(walletAddress, date, balanceStr);
@@ -136,12 +174,62 @@ export class EtherscanService {
     return balanceStr;
   }
 
+  private async getBlockNumberByTimestamp(date: Date): Promise<number> {
+    const timestamp = Math.floor(date.getTime() / 1000);
+    const url = this.buildUrl({
+      module: 'block',
+      action: 'getblocknobytime',
+      timestamp: timestamp.toString(),
+      closest: 'before',
+    });
+
+    const response = await this.fetchWithTimeout(url);
+    const data = await response.json();
+
+    if (data.status !== '1') {
+      throw new Error(data.message || 'Failed to get block number for date');
+    }
+
+    return parseInt(data.result);
+  }
+
+  private async getBalanceAtBlock(walletAddress: string, blockNumber: number): Promise<bigint> {
+    const blockHex = '0x' + blockNumber.toString(16);
+    const rpcResponse = await fetch(this.rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'eth_getBalance',
+        params: [walletAddress, blockHex],
+      }),
+    });
+
+    const data = await rpcResponse.json();
+
+    if (data.error) {
+      throw new Error(data.error.message || 'Failed to get balance from RPC');
+    }
+
+    return BigInt(data.result);
+  }
+
   private async fetchTokenTransferRange(
     walletAddress: string,
     startBlock: number,
     endBlock: number
   ): Promise<EtherscanTokenTransaction[]> {
-    const url = `${this.baseUrl}?chainid=1&module=account&action=tokentx&address=${walletAddress}&startblock=${startBlock}&endblock=${endBlock}&page=1&offset=10000&sort=asc&apikey=${this.apiKey}`;
+    const url = this.buildUrl({
+      module: 'account',
+      action: 'tokentx',
+      address: walletAddress,
+      startblock: startBlock.toString(),
+      endblock: endBlock.toString(),
+      page: '1',
+      offset: '10000',
+      sort: 'asc',
+    });
 
     const MAX_RETRIES = 3;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -174,38 +262,16 @@ export class EtherscanService {
   }
 
   async syncTokenTransfers(walletAddress: string, startBlock: number): Promise<void> {
-    const lastSyncedBlock = await this.db.getLastTokenSyncedBlock(walletAddress);
-    const actualStartBlock = Math.max(startBlock, lastSyncedBlock + 1);
-
+    const { firstSyncedBlock, lastSyncedBlock } = await this.db.getTokenSyncStatus(walletAddress);
     const latestBlock = await this.getLatestBlockNumber();
 
-    if (actualStartBlock > latestBlock) {
-      return;
+    if (firstSyncedBlock > 0 && startBlock < firstSyncedBlock) {
+      await this.syncBlockRange(walletAddress, startBlock, firstSyncedBlock - 1, 'tokens');
     }
 
-    const BLOCK_CHUNK_SIZE = 100000;
-    let currentBlock = actualStartBlock;
-
-    while (currentBlock <= latestBlock) {
-      const endBlock = Math.min(currentBlock + BLOCK_CHUNK_SIZE - 1, latestBlock);
-
-      const transfers = await this.fetchTokenTransferRange(
-        walletAddress,
-        currentBlock,
-        endBlock
-      );
-
-      if (transfers.length > 0) {
-        await this.db.saveTokenTransfers(transfers);
-        await this.db.updateTokenSyncStatus(walletAddress, endBlock, transfers.length);
-      }
-
-      if (transfers.length === 10000) {
-        console.warn(`Hit 10k limit for token block range ${currentBlock}-${endBlock}, some transfers may be missing`);
-      }
-
-      currentBlock = endBlock + 1;
-      await this.delay(250);
+    const forwardStart = lastSyncedBlock > 0 ? lastSyncedBlock + 1 : startBlock;
+    if (forwardStart <= latestBlock) {
+      await this.syncBlockRange(walletAddress, forwardStart, latestBlock, 'tokens');
     }
   }
 

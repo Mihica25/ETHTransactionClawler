@@ -1,18 +1,13 @@
 version: '3.8'
 
 services:
-  # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
     container_name: eth-crawler-postgres
-    environment:
-      POSTGRES_DB: eth_transactions
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+    env_file:
+      - .env.docker
     volumes:
-      # Persist database data
       - postgres_data:/var/lib/postgresql/data
-      # Auto-initialize schema on first run
       - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
     ports:
       - "5432:5432"
@@ -24,7 +19,6 @@ services:
     networks:
       - eth-crawler-network
 
-  # Node.js Application
   app:
     build:
       context: .
@@ -34,15 +28,6 @@ services:
       - "3000:3000"
     env_file:
       - .env.docker
-    environment:
-      # Override with Docker-specific settings
-      PORT: 3000
-      # Database configuration (connects to postgres container)
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: eth_transactions
-      DB_USER: postgres
-      DB_PASSWORD: postgres
     depends_on:
       postgres:
         condition: service_healthy
@@ -50,12 +35,10 @@ services:
       - eth-crawler-network
     restart: unless-stopped
 
-# Named volumes for data persistence
 volumes:
   postgres_data:
     driver: local
 
-# Custom network
 networks:
   eth-crawler-network:
     driver: bridge

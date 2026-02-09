@@ -324,11 +324,6 @@ function displayBalanceResult(data) {
     balanceDiv.textContent = parseFloat(balance).toFixed(6) + ' ETH';
     container.appendChild(balanceDiv);
 
-    const noteDiv = document.createElement('div');
-    noteDiv.style.cssText = 'margin-top: 10px; font-size: 12px; color: #666;';
-    noteDiv.textContent = 'Note: This calculation is based on transaction values only and does not include gas fees.';
-    container.appendChild(noteDiv);
-
     showElement('balanceResult');
 }
 

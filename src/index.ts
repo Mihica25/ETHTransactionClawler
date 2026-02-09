@@ -36,8 +36,8 @@ if (!connected) {
 }
 
 const apiLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 30,
+  windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS) || 60000,
+  max: Number(process.env.RATE_LIMIT_MAX) || 30,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again later' },
