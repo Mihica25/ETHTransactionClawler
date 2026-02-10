@@ -11,10 +11,13 @@ function validateStartBlock(startBlock: unknown): boolean {
   return startBlock !== undefined && !isNaN(Number(startBlock));
 }
 
+const DEFAULT_PAGE_LIMIT = 100;
+const MAX_PAGE_LIMIT = 500;
+
 function parsePagination(query: Request['query']) {
   return {
     page: Math.max(1, Number(query.page) || 1),
-    limit: Math.min(500, Math.max(1, Number(query.limit) || 100)),
+    limit: Math.min(MAX_PAGE_LIMIT, Math.max(1, Number(query.limit) || DEFAULT_PAGE_LIMIT)),
   };
 }
 

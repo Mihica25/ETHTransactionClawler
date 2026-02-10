@@ -1,5 +1,7 @@
-import type { EtherscanResponse, EtherscanTransaction, EtherscanTokenTransaction, TransactionDisplay, TokenTransferDisplay } from '../types/index.js';
+import type { EtherscanResponse, EtherscanTransaction, EtherscanTokenTransaction, PaginatedTransactions, PaginatedTokenTransfers } from '../types/index.js';
 import type { DatabaseService } from './database.service.js';
+import { weiToEth } from '../utils/conversion.utils.js';
+import { fetchWithTimeout, delay } from '../utils/http.utils.js';
 
 export class EtherscanService {
   private apiKey: string;
@@ -8,8 +10,13 @@ export class EtherscanService {
   private rpcUrl: string;
   private db: DatabaseService;
 
-  private static readonly FETCH_TIMEOUT_MS = Number(process.env.FETCH_TIMEOUT_MS) || 15000;
   private static readonly BLOCK_CHUNK_SIZE = 100000;
+  private static readonly MAX_RETRIES = 3;
+  // Etherscan returns max 10,000 results per API call
+  private static readonly API_PAGE_SIZE = 10000;
+  private static readonly RATE_LIMIT_DELAY_MS = 2000;
+  private static readonly RETRY_DELAY_MS = 3000;
+  private static readonly CHUNK_DELAY_MS = 250;
 
   constructor(apiKey: string, db: DatabaseService) {
     this.apiKey = apiKey;
@@ -27,19 +34,9 @@ export class EtherscanService {
     return `${this.baseUrl}?${searchParams}`;
   }
 
-  private async fetchWithTimeout(url: string, timeoutMs: number = EtherscanService.FETCH_TIMEOUT_MS): Promise<Response> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      return await fetch(url, { signal: controller.signal });
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
   private async getLatestBlockNumber(): Promise<number> {
     const url = this.buildUrl({ module: 'proxy', action: 'eth_blockNumber' });
-    const response = await this.fetchWithTimeout(url);
+    const response = await fetchWithTimeout(url);
     const data = await response.json();
     return parseInt(data.result, 16);
   }
@@ -56,14 +53,13 @@ export class EtherscanService {
       startblock: startBlock.toString(),
       endblock: endBlock.toString(),
       page: '1',
-      offset: '10000',
+      offset: EtherscanService.API_PAGE_SIZE.toString(),
       sort: 'asc',
     });
 
-    const MAX_RETRIES = 3;
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    for (let attempt = 1; attempt <= EtherscanService.MAX_RETRIES; attempt++) {
       try {
-        const response = await this.fetchWithTimeout(url);
+        const response = await fetchWithTimeout(url);
         const data: EtherscanResponse = await response.json();
 
         if (data.status !== '1') {
@@ -71,7 +67,7 @@ export class EtherscanService {
             return [];
           }
           if (data.result && typeof data.result === 'string' && data.result.includes('rate limit')) {
-            await this.delay(2000);
+            await delay(EtherscanService.RATE_LIMIT_DELAY_MS);
             continue;
           }
           throw new Error(data.message || 'Failed to fetch transactions');
@@ -79,8 +75,8 @@ export class EtherscanService {
 
         return data.result as EtherscanTransaction[];
       } catch (error) {
-        if (attempt < MAX_RETRIES) {
-          await this.delay(3000);
+        if (attempt < EtherscanService.MAX_RETRIES) {
+          await delay(EtherscanService.RETRY_DELAY_MS);
         } else {
           throw error;
         }
@@ -121,7 +117,7 @@ export class EtherscanService {
           await this.db.saveTransactions(transactions);
         }
         await this.db.updateSyncStatus(walletAddress, currentBlock, endBlock, transactions.length);
-        if (transactions.length === 10000) {
+        if (transactions.length === EtherscanService.API_PAGE_SIZE) {
           console.warn(`Hit 10k limit for block range ${currentBlock}-${endBlock}, some transactions may be missing`);
         }
       } else {
@@ -130,13 +126,13 @@ export class EtherscanService {
           await this.db.saveTokenTransfers(transfers);
         }
         await this.db.updateTokenSyncStatus(walletAddress, currentBlock, endBlock, transfers.length);
-        if (transfers.length === 10000) {
+        if (transfers.length === EtherscanService.API_PAGE_SIZE) {
           console.warn(`Hit 10k limit for token block range ${currentBlock}-${endBlock}, some transfers may be missing`);
         }
       }
 
       currentBlock = endBlock + 1;
-      await this.delay(250);
+      await delay(EtherscanService.CHUNK_DELAY_MS);
     }
   }
 
@@ -145,7 +141,7 @@ export class EtherscanService {
     startBlock: number,
     page: number = 1,
     limit: number = 100
-  ): Promise<{ transactions: TransactionDisplay[]; total: number }> {
+  ): Promise<PaginatedTransactions> {
     await this.syncTransactions(walletAddress, startBlock);
     return await this.db.getTransactions(walletAddress, startBlock, undefined, page, limit);
   }
@@ -167,7 +163,7 @@ export class EtherscanService {
 
     const blockNumber = await this.getBlockNumberByTimestamp(targetDate);
     const balanceWei = await this.getBalanceAtBlock(walletAddress, blockNumber);
-    const balanceStr = this.weiToEthBigInt(balanceWei);
+    const balanceStr = weiToEth(balanceWei);
 
     await this.db.saveBalanceSnapshot(walletAddress, date, balanceStr);
 
@@ -183,7 +179,7 @@ export class EtherscanService {
       closest: 'before',
     });
 
-    const response = await this.fetchWithTimeout(url);
+    const response = await fetchWithTimeout(url);
     const data = await response.json();
 
     if (data.status !== '1') {
@@ -227,14 +223,13 @@ export class EtherscanService {
       startblock: startBlock.toString(),
       endblock: endBlock.toString(),
       page: '1',
-      offset: '10000',
+      offset: EtherscanService.API_PAGE_SIZE.toString(),
       sort: 'asc',
     });
 
-    const MAX_RETRIES = 3;
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    for (let attempt = 1; attempt <= EtherscanService.MAX_RETRIES; attempt++) {
       try {
-        const response = await this.fetchWithTimeout(url);
+        const response = await fetchWithTimeout(url);
         const data: EtherscanResponse = await response.json();
 
         if (data.status !== '1') {
@@ -242,7 +237,7 @@ export class EtherscanService {
             return [];
           }
           if (data.result && typeof data.result === 'string' && data.result.includes('rate limit')) {
-            await this.delay(2000);
+            await delay(EtherscanService.RATE_LIMIT_DELAY_MS);
             continue;
           }
           throw new Error(data.message || 'Failed to fetch token transfers');
@@ -250,8 +245,8 @@ export class EtherscanService {
 
         return data.result as EtherscanTokenTransaction[];
       } catch (error) {
-        if (attempt < MAX_RETRIES) {
-          await this.delay(3000);
+        if (attempt < EtherscanService.MAX_RETRIES) {
+          await delay(EtherscanService.RETRY_DELAY_MS);
         } else {
           throw error;
         }
@@ -280,23 +275,9 @@ export class EtherscanService {
     startBlock: number,
     page: number = 1,
     limit: number = 100
-  ): Promise<{ transfers: TokenTransferDisplay[]; total: number }> {
+  ): Promise<PaginatedTokenTransfers> {
     await this.syncTokenTransfers(walletAddress, startBlock);
     return await this.db.getTokenTransfers(walletAddress, startBlock, page, limit);
   }
 
-  private weiToEthBigInt(wei: bigint): string {
-    const divisor = 10n ** 18n;
-    const whole = wei / divisor;
-    const remainder = wei % divisor;
-    const isNegative = wei < 0n;
-    const absRemainder = remainder < 0n ? -remainder : remainder;
-    const decimalStr = absRemainder.toString().padStart(18, '0').slice(0, 6);
-    const sign = isNegative && whole === 0n ? '-' : '';
-    return `${sign}${whole}.${decimalStr}`;
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
 }

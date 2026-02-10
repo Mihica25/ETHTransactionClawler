@@ -66,3 +66,18 @@ export interface TokenTransferDisplay {
   contractAddress: string;
   timestamp: string;
 }
+
+export interface SyncStatus {
+  firstSyncedBlock: number;
+  lastSyncedBlock: number;
+}
+
+export interface PaginatedTransactions {
+  transactions: TransactionDisplay[];
+  total: number;
+}
+
+export interface PaginatedTokenTransfers {
+  transfers: TokenTransferDisplay[];
+  total: number;
+}

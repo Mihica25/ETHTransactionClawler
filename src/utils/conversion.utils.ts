@@ -18,15 +18,17 @@ export function tokenAmountToDecimal(rawValue: string, decimals: number): string
   }
 }
 
-export function weiToEth(wei: string): string {
+export function weiToEth(wei: string | bigint): string {
   try {
-    const weiBigInt = BigInt(wei);
-    const ethWhole = weiBigInt / BigInt(1e18);
-    const weiRemainder = weiBigInt % BigInt(1e18);
-    const decimalStr = weiRemainder.toString().padStart(18, '0').slice(0, 6);
-
-    const result = `${ethWhole}.${decimalStr}`;
-    return parseFloat(result).toFixed(6);
+    const weiBigInt = typeof wei === 'bigint' ? wei : BigInt(wei);
+    const divisor = 10n ** 18n;
+    const whole = weiBigInt / divisor;
+    const remainder = weiBigInt % divisor;
+    const isNegative = weiBigInt < 0n;
+    const absRemainder = remainder < 0n ? -remainder : remainder;
+    const decimalStr = absRemainder.toString().padStart(18, '0').slice(0, 6);
+    const sign = isNegative && whole === 0n ? '-' : '';
+    return `${sign}${whole}.${decimalStr}`;
   } catch {
     const ethValue = Number(wei) / 1e18;
     return ethValue.toFixed(6);

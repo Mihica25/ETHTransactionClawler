@@ -1,9 +1,14 @@
 import { Pool } from 'pg';
-import type { EtherscanTransaction, EtherscanTokenTransaction, TransactionDisplay, TokenTransferDisplay } from '../types/index.js';
+import type { EtherscanTransaction, EtherscanTokenTransaction, SyncStatus, PaginatedTransactions, PaginatedTokenTransfers } from '../types/index.js';
 import { weiToEth, tokenAmountToDecimal } from '../utils/conversion.utils.js';
+
+type QueryParam = string | number | null;
 
 export class DatabaseService {
   private static readonly BATCH_SIZE = 500;
+  // Number of columns in each INSERT statement
+  private static readonly TX_FIELD_COUNT = 8;
+  private static readonly TOKEN_TRANSFER_FIELD_COUNT = 10;
   private pool: Pool;
 
   constructor() {
@@ -44,12 +49,12 @@ export class DatabaseService {
 
       for (let i = 0; i < transactions.length; i += DatabaseService.BATCH_SIZE) {
         const batch = transactions.slice(i, i + DatabaseService.BATCH_SIZE);
-        const values: any[] = [];
+        const values: QueryParam[] = [];
         const valuePlaceholders: string[] = [];
         let paramIndex = 1;
 
         for (const tx of batch) {
-          valuePlaceholders.push(DatabaseService.buildPlaceholder(paramIndex, 8));
+          valuePlaceholders.push(DatabaseService.buildPlaceholder(paramIndex, DatabaseService.TX_FIELD_COUNT));
           values.push(
             tx.hash,
             parseInt(tx.blockNumber),
@@ -60,7 +65,7 @@ export class DatabaseService {
             tx.gasPrice,
             parseInt(tx.timeStamp)
           );
-          paramIndex += 8;
+          paramIndex += DatabaseService.TX_FIELD_COUNT;
         }
 
         const query = `
@@ -82,7 +87,7 @@ export class DatabaseService {
     }
   }
 
-  async getSyncStatus(walletAddress: string): Promise<{ firstSyncedBlock: number; lastSyncedBlock: number }> {
+  async getSyncStatus(walletAddress: string): Promise<SyncStatus> {
     const result = await this.pool.query(
       `SELECT first_synced_block, last_synced_block FROM wallet_sync_status WHERE wallet_address = $1`,
       [walletAddress.toLowerCase()]
@@ -113,7 +118,7 @@ export class DatabaseService {
     endBlock?: number,
     page: number = 1,
     limit: number = 100
-  ): Promise<{ transactions: TransactionDisplay[]; total: number }> {
+  ): Promise<PaginatedTransactions> {
     const lowerAddress = walletAddress.toLowerCase();
     const offset = (page - 1) * limit;
 
@@ -184,12 +189,12 @@ export class DatabaseService {
 
       for (let i = 0; i < transfers.length; i += DatabaseService.BATCH_SIZE) {
         const batch = transfers.slice(i, i + DatabaseService.BATCH_SIZE);
-        const values: any[] = [];
+        const values: QueryParam[] = [];
         const valuePlaceholders: string[] = [];
         let paramIndex = 1;
 
         for (const tx of batch) {
-          valuePlaceholders.push(DatabaseService.buildPlaceholder(paramIndex, 10));
+          valuePlaceholders.push(DatabaseService.buildPlaceholder(paramIndex, DatabaseService.TOKEN_TRANSFER_FIELD_COUNT));
           values.push(
             tx.hash,
             parseInt(tx.blockNumber),
@@ -202,7 +207,7 @@ export class DatabaseService {
             tx.value,
             parseInt(tx.timeStamp)
           );
-          paramIndex += 10;
+          paramIndex += DatabaseService.TOKEN_TRANSFER_FIELD_COUNT;
         }
 
         const query = `
@@ -224,7 +229,7 @@ export class DatabaseService {
     }
   }
 
-  async getTokenSyncStatus(walletAddress: string): Promise<{ firstSyncedBlock: number; lastSyncedBlock: number }> {
+  async getTokenSyncStatus(walletAddress: string): Promise<SyncStatus> {
     const result = await this.pool.query(
       `SELECT first_synced_block, last_synced_block FROM wallet_token_sync_status WHERE wallet_address = $1`,
       [walletAddress.toLowerCase()]
@@ -254,7 +259,7 @@ export class DatabaseService {
     startBlock: number,
     page: number = 1,
     limit: number = 100
-  ): Promise<{ transfers: TokenTransferDisplay[]; total: number }> {
+  ): Promise<PaginatedTokenTransfers> {
     const lowerAddress = walletAddress.toLowerCase();
     const offset = (page - 1) * limit;
 
