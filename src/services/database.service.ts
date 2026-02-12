@@ -1,5 +1,11 @@
 import { Pool } from 'pg';
-import type { EtherscanTransaction, EtherscanTokenTransaction, SyncStatus, PaginatedTransactions, PaginatedTokenTransfers } from '../types/index.js';
+import type {
+  EtherscanTransaction,
+  EtherscanTokenTransaction,
+  SyncStatus,
+  PaginatedTransactions,
+  PaginatedTokenTransfers,
+} from '../types/index.js';
 import { weiToEth, tokenAmountToDecimal } from '../utils/conversion.utils.js';
 
 type QueryParam = string | number | null;
@@ -63,7 +69,7 @@ export class DatabaseService {
             tx.value,
             parseInt(tx.gasUsed),
             tx.gasPrice,
-            parseInt(tx.timeStamp)
+            parseInt(tx.timeStamp),
           );
           paramIndex += DatabaseService.TX_FIELD_COUNT;
         }
@@ -90,7 +96,7 @@ export class DatabaseService {
   async getSyncStatus(walletAddress: string): Promise<SyncStatus> {
     const result = await this.pool.query(
       `SELECT first_synced_block, last_synced_block FROM wallet_sync_status WHERE wallet_address = $1`,
-      [walletAddress.toLowerCase()]
+      [walletAddress.toLowerCase()],
     );
     return {
       firstSyncedBlock: result.rows[0]?.first_synced_block || 0,
@@ -98,7 +104,12 @@ export class DatabaseService {
     };
   }
 
-  async updateSyncStatus(walletAddress: string, startBlock: number, endBlock: number, transactionCount: number): Promise<void> {
+  async updateSyncStatus(
+    walletAddress: string,
+    startBlock: number,
+    endBlock: number,
+    transactionCount: number,
+  ): Promise<void> {
     await this.pool.query(
       `INSERT INTO wallet_sync_status (wallet_address, first_synced_block, last_synced_block, total_transactions, last_synced_at)
        VALUES ($1, $2, $3, $4, NOW())
@@ -108,7 +119,7 @@ export class DatabaseService {
          last_synced_block = GREATEST(wallet_sync_status.last_synced_block, $3),
          total_transactions = wallet_sync_status.total_transactions + $4,
          last_synced_at = NOW()`,
-      [walletAddress.toLowerCase(), startBlock, endBlock, transactionCount]
+      [walletAddress.toLowerCase(), startBlock, endBlock, transactionCount],
     );
   }
 
@@ -117,7 +128,7 @@ export class DatabaseService {
     startBlock: number,
     endBlock?: number,
     page: number = 1,
-    limit: number = 100
+    limit: number = 100,
   ): Promise<PaginatedTransactions> {
     const lowerAddress = walletAddress.toLowerCase();
     const offset = (page - 1) * limit;
@@ -130,10 +141,7 @@ export class DatabaseService {
       params.push(endBlock);
     }
 
-    const countResult = await this.pool.query(
-      `SELECT COUNT(*) FROM transactions ${whereClause}`,
-      params
-    );
+    const countResult = await this.pool.query(`SELECT COUNT(*) FROM transactions ${whereClause}`, params);
     const total = parseInt(countResult.rows[0].count);
 
     const nextParam = params.length + 1;
@@ -142,10 +150,10 @@ export class DatabaseService {
        FROM transactions ${whereClause}
        ORDER BY block_number ASC, timestamp ASC
        LIMIT $${nextParam} OFFSET $${nextParam + 1}`,
-      [...params, limit, offset]
+      [...params, limit, offset],
     );
 
-    const transactions = dataResult.rows.map(row => ({
+    const transactions = dataResult.rows.map((row) => ({
       hash: row.hash,
       blockNumber: row.blockNumber.toString(),
       from: row.from,
@@ -163,14 +171,14 @@ export class DatabaseService {
        VALUES ($1, $2, $3)
        ON CONFLICT (wallet_address, snapshot_date)
        DO UPDATE SET balance = $3, created_at = NOW()`,
-      [walletAddress.toLowerCase(), date, balance]
+      [walletAddress.toLowerCase(), date, balance],
     );
   }
 
   async getBalanceSnapshot(walletAddress: string, date: string): Promise<{ balance: string } | null> {
     const result = await this.pool.query(
       `SELECT balance::text FROM balance_snapshots WHERE wallet_address = $1 AND snapshot_date = $2`,
-      [walletAddress.toLowerCase(), date]
+      [walletAddress.toLowerCase(), date],
     );
 
     if (result.rows.length > 0) {
@@ -194,7 +202,9 @@ export class DatabaseService {
         let paramIndex = 1;
 
         for (const tx of batch) {
-          valuePlaceholders.push(DatabaseService.buildPlaceholder(paramIndex, DatabaseService.TOKEN_TRANSFER_FIELD_COUNT));
+          valuePlaceholders.push(
+            DatabaseService.buildPlaceholder(paramIndex, DatabaseService.TOKEN_TRANSFER_FIELD_COUNT),
+          );
           values.push(
             tx.hash,
             parseInt(tx.blockNumber),
@@ -205,7 +215,7 @@ export class DatabaseService {
             tx.tokenSymbol,
             parseInt(tx.tokenDecimal),
             tx.value,
-            parseInt(tx.timeStamp)
+            parseInt(tx.timeStamp),
           );
           paramIndex += DatabaseService.TOKEN_TRANSFER_FIELD_COUNT;
         }
@@ -232,7 +242,7 @@ export class DatabaseService {
   async getTokenSyncStatus(walletAddress: string): Promise<SyncStatus> {
     const result = await this.pool.query(
       `SELECT first_synced_block, last_synced_block FROM wallet_token_sync_status WHERE wallet_address = $1`,
-      [walletAddress.toLowerCase()]
+      [walletAddress.toLowerCase()],
     );
     return {
       firstSyncedBlock: result.rows[0]?.first_synced_block || 0,
@@ -240,7 +250,12 @@ export class DatabaseService {
     };
   }
 
-  async updateTokenSyncStatus(walletAddress: string, startBlock: number, endBlock: number, transferCount: number): Promise<void> {
+  async updateTokenSyncStatus(
+    walletAddress: string,
+    startBlock: number,
+    endBlock: number,
+    transferCount: number,
+  ): Promise<void> {
     await this.pool.query(
       `INSERT INTO wallet_token_sync_status (wallet_address, first_synced_block, last_synced_block, total_transfers, last_synced_at)
        VALUES ($1, $2, $3, $4, NOW())
@@ -250,7 +265,7 @@ export class DatabaseService {
          last_synced_block = GREATEST(wallet_token_sync_status.last_synced_block, $3),
          total_transfers = wallet_token_sync_status.total_transfers + $4,
          last_synced_at = NOW()`,
-      [walletAddress.toLowerCase(), startBlock, endBlock, transferCount]
+      [walletAddress.toLowerCase(), startBlock, endBlock, transferCount],
     );
   }
 
@@ -258,17 +273,17 @@ export class DatabaseService {
     walletAddress: string,
     startBlock: number,
     page: number = 1,
-    limit: number = 100
+    limit: number = 100,
   ): Promise<PaginatedTokenTransfers> {
     const lowerAddress = walletAddress.toLowerCase();
     const offset = (page - 1) * limit;
 
     const whereClause = `WHERE (from_address = $1 OR to_address = $1) AND block_number >= $2`;
 
-    const countResult = await this.pool.query(
-      `SELECT COUNT(*) FROM token_transfers ${whereClause}`,
-      [lowerAddress, startBlock]
-    );
+    const countResult = await this.pool.query(`SELECT COUNT(*) FROM token_transfers ${whereClause}`, [
+      lowerAddress,
+      startBlock,
+    ]);
     const total = parseInt(countResult.rows[0].count);
 
     const dataResult = await this.pool.query(
@@ -278,10 +293,10 @@ export class DatabaseService {
        FROM token_transfers ${whereClause}
        ORDER BY block_number ASC, timestamp ASC
        LIMIT $3 OFFSET $4`,
-      [lowerAddress, startBlock, limit, offset]
+      [lowerAddress, startBlock, limit, offset],
     );
 
-    const transfers = dataResult.rows.map(row => ({
+    const transfers = dataResult.rows.map((row) => ({
       hash: row.hash,
       blockNumber: row.blockNumber.toString(),
       from: row.from,

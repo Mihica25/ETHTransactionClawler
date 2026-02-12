@@ -30,13 +30,13 @@ export function createTransactionRoutes(etherscanService: EtherscanService): Rou
 
       if (!validateWalletAddress(walletAddress)) {
         return res.status(400).json({
-          error: 'walletAddress is required and must be a valid Ethereum address'
+          error: 'walletAddress is required and must be a valid Ethereum address',
         });
       }
 
       if (!validateStartBlock(startBlock)) {
         return res.status(400).json({
-          error: 'startBlock is required and must be a number'
+          error: 'startBlock is required and must be a number',
         });
       }
 
@@ -46,7 +46,7 @@ export function createTransactionRoutes(etherscanService: EtherscanService): Rou
         walletAddress,
         Number(startBlock),
         page,
-        limit
+        limit,
       );
 
       res.json({
@@ -72,19 +72,19 @@ export function createTransactionRoutes(etherscanService: EtherscanService): Rou
 
       if (!validateWalletAddress(walletAddress)) {
         return res.status(400).json({
-          error: 'walletAddress is required and must be a valid Ethereum address'
+          error: 'walletAddress is required and must be a valid Ethereum address',
         });
       }
 
       if (!date || typeof date !== 'string') {
         return res.status(400).json({
-          error: 'date is required (format: YYYY-MM-DD)'
+          error: 'date is required (format: YYYY-MM-DD)',
         });
       }
 
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         return res.status(400).json({
-          error: 'Invalid date format. Use YYYY-MM-DD'
+          error: 'Invalid date format. Use YYYY-MM-DD',
         });
       }
 
@@ -109,13 +109,13 @@ export function createTransactionRoutes(etherscanService: EtherscanService): Rou
 
       if (!validateWalletAddress(walletAddress)) {
         return res.status(400).json({
-          error: 'walletAddress is required and must be a valid Ethereum address'
+          error: 'walletAddress is required and must be a valid Ethereum address',
         });
       }
 
       if (!validateStartBlock(startBlock)) {
         return res.status(400).json({
-          error: 'startBlock is required and must be a number'
+          error: 'startBlock is required and must be a number',
         });
       }
 
@@ -125,7 +125,7 @@ export function createTransactionRoutes(etherscanService: EtherscanService): Rou
         walletAddress,
         Number(startBlock),
         page,
-        limit
+        limit,
       );
 
       res.json({

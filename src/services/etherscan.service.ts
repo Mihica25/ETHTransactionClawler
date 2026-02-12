@@ -1,4 +1,10 @@
-import type { EtherscanResponse, EtherscanTransaction, EtherscanTokenTransaction, PaginatedTransactions, PaginatedTokenTransfers } from '../types/index.js';
+import type {
+  EtherscanResponse,
+  EtherscanTransaction,
+  EtherscanTokenTransaction,
+  PaginatedTransactions,
+  PaginatedTokenTransfers,
+} from '../types/index.js';
 import type { DatabaseService } from './database.service.js';
 import { weiToEth } from '../utils/conversion.utils.js';
 import { fetchWithTimeout, delay } from '../utils/http.utils.js';
@@ -44,7 +50,7 @@ export class EtherscanService {
   private async fetchTransactionRange(
     walletAddress: string,
     startBlock: number,
-    endBlock: number
+    endBlock: number,
   ): Promise<EtherscanTransaction[]> {
     const url = this.buildUrl({
       module: 'account',
@@ -104,7 +110,7 @@ export class EtherscanService {
     walletAddress: string,
     fromBlock: number,
     toBlock: number,
-    type: 'transactions' | 'tokens'
+    type: 'transactions' | 'tokens',
   ): Promise<void> {
     let currentBlock = fromBlock;
 
@@ -127,7 +133,9 @@ export class EtherscanService {
         }
         await this.db.updateTokenSyncStatus(walletAddress, currentBlock, endBlock, transfers.length);
         if (transfers.length === EtherscanService.API_PAGE_SIZE) {
-          console.warn(`Hit 10k limit for token block range ${currentBlock}-${endBlock}, some transfers may be missing`);
+          console.warn(
+            `Hit 10k limit for token block range ${currentBlock}-${endBlock}, some transfers may be missing`,
+          );
         }
       }
 
@@ -140,7 +148,7 @@ export class EtherscanService {
     walletAddress: string,
     startBlock: number,
     page: number = 1,
-    limit: number = 100
+    limit: number = 100,
   ): Promise<PaginatedTransactions> {
     await this.syncTransactions(walletAddress, startBlock);
     return await this.db.getTransactions(walletAddress, startBlock, undefined, page, limit);
@@ -214,7 +222,7 @@ export class EtherscanService {
   private async fetchTokenTransferRange(
     walletAddress: string,
     startBlock: number,
-    endBlock: number
+    endBlock: number,
   ): Promise<EtherscanTokenTransaction[]> {
     const url = this.buildUrl({
       module: 'account',
@@ -274,10 +282,9 @@ export class EtherscanService {
     walletAddress: string,
     startBlock: number,
     page: number = 1,
-    limit: number = 100
+    limit: number = 100,
   ): Promise<PaginatedTokenTransfers> {
     await this.syncTokenTransfers(walletAddress, startBlock);
     return await this.db.getTokenTransfers(walletAddress, startBlock, page, limit);
   }
-
 }

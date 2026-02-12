@@ -1,6 +1,10 @@
 const DEFAULT_TIMEOUT_MS = Number(process.env.FETCH_TIMEOUT_MS) || 15000;
 
-export async function fetchWithTimeout(url: string, options?: RequestInit, timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<Response> {
+export async function fetchWithTimeout(
+  url: string,
+  options?: RequestInit,
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
+): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -11,5 +15,5 @@ export async function fetchWithTimeout(url: string, options?: RequestInit, timeo
 }
 
 export function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
